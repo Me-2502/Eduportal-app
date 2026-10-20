@@ -1,0 +1,168 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/public-sans";
+@import "@fontsource-variable/source-serif-4";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Palette: warm paper, ink, chalkboard green, with ochre as the one highlight colour.
+  Event and subject tones are deliberately muted so a busy timetable stays readable.
+*/
+:root {
+  --radius: 0.5rem;
+
+  --background: #f7f5f0;
+  --foreground: #1c2421;
+  --card: #fdfcf9;
+  --card-foreground: #1c2421;
+  --popover: #fdfcf9;
+  --popover-foreground: #1c2421;
+  --primary: #2d5a4a;
+  --primary-foreground: #f7f5f0;
+  --secondary: #ebe7dd;
+  --secondary-foreground: #2a332f;
+  --muted: #efebe3;
+  --muted-foreground: #6b6a63;
+  --accent: #e9e4d8;
+  --accent-foreground: #1c2421;
+  --destructive: #b03a2e;
+  --border: #e2ddd2;
+  --input: #d6d0c3;
+  --ring: #2d5a4a;
+  --marker: #c98a1b;
+
+  --sidebar: #efebe2;
+  --sidebar-foreground: #2a332f;
+  --sidebar-accent: #e3ddd0;
+  --sidebar-border: #e2ddd2;
+
+  --ev-event: #2f5f8a;
+  --ev-holiday: #3f7d5c;
+  --ev-exam: #b4532f;
+  --ev-meeting: #a8761c;
+  --ev-other: #6b6a63;
+
+  --tone-1: #2f5f8a;
+  --tone-2: #3f7d5c;
+  --tone-3: #b4532f;
+  --tone-4: #a8761c;
+  --tone-5: #7a4f86;
+  --tone-6: #2c7a7b;
+  --tone-7: #8a5a3c;
+  --tone-8: #5b6b2f;
+}
+
+.dark {
+  --background: #141917;
+  --foreground: #e8e6e0;
+  --card: #1a201e;
+  --card-foreground: #e8e6e0;
+  --popover: #1a201e;
+  --popover-foreground: #e8e6e0;
+  --primary: #86bfa9;
+  --primary-foreground: #10201a;
+  --secondary: #242c29;
+  --secondary-foreground: #e8e6e0;
+  --muted: #212826;
+  --muted-foreground: #9a9c94;
+  --accent: #27302d;
+  --accent-foreground: #e8e6e0;
+  --destructive: #e06b5c;
+  --border: #2c3431;
+  --input: #36403c;
+  --ring: #86bfa9;
+  --marker: #e0a84a;
+
+  --sidebar: #171d1b;
+  --sidebar-foreground: #d9d7d0;
+  --sidebar-accent: #242c29;
+  --sidebar-border: #262e2b;
+
+  --ev-event: #7fa8cf;
+  --ev-holiday: #7fbf98;
+  --ev-exam: #e08a68;
+  --ev-meeting: #d9ad5a;
+  --ev-other: #a3a49c;
+
+  --tone-1: #7fa8cf;
+  --tone-2: #7fbf98;
+  --tone-3: #e08a68;
+  --tone-4: #d9ad5a;
+  --tone-5: #b994c4;
+  --tone-6: #6fbcbc;
+  --tone-7: #c79a7b;
+  --tone-8: #a7b86f;
+}
+
+@theme inline {
+  --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", ui-serif, Georgia, serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-marker: var(--marker);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --color-ev-event: var(--ev-event);
+  --color-ev-holiday: var(--ev-holiday);
+  --color-ev-exam: var(--ev-exam);
+  --color-ev-meeting: var(--ev-meeting);
+  --color-ev-other: var(--ev-other);
+
+  --color-tone-1: var(--tone-1);
+  --color-tone-2: var(--tone-2);
+  --color-tone-3: var(--tone-3);
+  --color-tone-4: var(--tone-4);
+  --color-tone-5: var(--tone-5);
+  --color-tone-6: var(--tone-6);
+  --color-tone-7: var(--tone-7);
+  --color-tone-8: var(--tone-8);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-background font-sans text-foreground;
+    font-feature-settings: "tnum" 0;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* native date/time pickers follow the theme */
+  .dark input[type="date"],
+  .dark input[type="datetime-local"],
+  .dark input[type="time"] {
+    color-scheme: dark;
+  }
+}
