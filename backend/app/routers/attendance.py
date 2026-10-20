@@ -3,12 +3,12 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import DBSession
-from app.deps import CurrentUser, ManagerUser, get_current_user
+from app.deps import CurrentUser, ManagerUser, current_academic_year, get_current_user
 from app.models import Attendance, Classroom, User
 from app.schemas import (
     AbsenceEntry,
@@ -116,24 +116,28 @@ def my_absences(
 def my_attendance_summary(
     user: CurrentUser, db: DBSession, year: int | None = Query(None, ge=2000, le=2100)
 ):
-    # TODO(you): absences per month for one academic year (June 1 .. May 31,
-    # default = current_academic_year() from app.deps).
-    #
-    # How:
-    #   - month = func.date_trunc("month", Attendance.absent_on)
-    #   - select month, func.count(), and func.count().filter(Attendance.is_excused)
-    #     (.label() each one so the rows have names); filter by user + date range;
-    #     .group_by(month).order_by(month)
-    #   - db.execute(...).all() returns Row objects (row.month, row.absent_days...), not models
-    #   - date_trunc returns a timestamp, so convert it with .date() for AttendanceMonthOut
-    #
-    # Why:
-    #   This is "let the database count". Loading every row and counting in Python works for
-    #   one student, but not once this becomes a class or school report. COUNT(*) FILTER
-    #   (WHERE ...) gives several counts in one pass, with no CASE WHEN tricks.
-    #   Months with zero absences won't appear. Decide whether the frontend fills the gaps
-    #   or you do here (generate_series is the SQL way).
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Not implemented yet")
+    year = year or current_academic_year()
+    start, end = date(year, 6, 1), date(year + 1, 5, 31)
+
+    # let the database count: COUNT(*) FILTER gives both counts in one pass
+    month = func.date_trunc("month", Attendance.absent_on).label("month")
+    statement = (
+        select(
+            month,
+            func.count().label("absent_days"),
+            func.count().filter(Attendance.is_excused).label("excused_days"),
+        )
+        .where(Attendance.user_id == user.id, Attendance.absent_on.between(start, end))
+        .group_by(month)
+        .order_by(month)
+    )
+    # months with no absences are left out; the frontend fills the gaps
+    return [
+        AttendanceMonthOut(
+            month=row.month.date(), absent_days=row.absent_days, excused_days=row.excused_days
+        )
+        for row in db.execute(statement).all()
+    ]
 
 
 @router.get("/class/{class_id}", response_model=list[AbsenceWithUserOut])

@@ -7,8 +7,8 @@ from sqlalchemy import text
 from app.config import settings
 from app.db import DBSession, set_rls_user
 from app.deps import CurrentUser
-from app.ratelimit import limiter
 from app.models import User
+from app.ratelimit import limiter
 from app.schemas import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
@@ -63,7 +63,9 @@ def me(user: CurrentUser):
 
 @router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("5/minute")
-def change_password(body: ChangePasswordRequest, request: Request, user: CurrentUser, db: DBSession):
+def change_password(
+    body: ChangePasswordRequest, request: Request, user: CurrentUser, db: DBSession
+):
     if not verify_password(body.old_password, user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Old password is incorrect")
     if body.new_password == body.old_password:

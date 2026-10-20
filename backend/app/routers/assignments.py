@@ -1,7 +1,8 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from app.db import DBSession
@@ -68,28 +69,26 @@ def list_assignments(
 
 @router.get("/me", response_model=list[StudentAssignmentOut])
 def my_assignments(user: StudentUser, db: DBSession, pending: bool = False):
-    # TODO(you): every assignment of the student's class, each paired with *their*
-    # submission (or None), returned as StudentAssignmentOut(assignment=..., submission=...).
-    #
-    # How:
-    #   - select(Assignment, Submission) with a LEFT OUTER JOIN:
-    #       .outerjoin(Submission, and_(Submission.assignment_id == Assignment.id,
-    #                                   Submission.student_id == user.id))
-    #   - .options(*ASSIGNMENT_OPTIONS), filter on Assignment.classroom_id == user.classroom_id,
-    #     order so the nearest deadline comes first
-    #   - db.execute(statement).all() -> (assignment, submission) tuples
-    #   - ?pending=true: only rows with no submission (Submission.id.is_(None)) that are
-    #     still open (due_at > func.now(), or allow_late)
-    #
-    # Why:
-    #   - student_id must go in the ON clause, not .where(). In WHERE, the rows for
-    #     assignments without a submission (where Submission columns are NULL) get filtered
-    #     out, and your LEFT JOIN quietly becomes an INNER JOIN. This is a classic SQL bug.
-    #   - Selecting two entities in one query is how you avoid the N+1 alternative
-    #     ("for each assignment, query its submission").
-    #   - RLS already limits a student to their class, but the WHERE clause is what defines
-    #     "my assignments". RLS is the safety net, not the query.
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Not implemented yet")
+    statement = (
+        select(Assignment, Submission)
+        .options(*ASSIGNMENT_OPTIONS)
+        # student_id goes in the ON clause: in WHERE it would drop the assignments without a
+        # submission and quietly turn this into an INNER JOIN
+        .outerjoin(
+            Submission,
+            and_(Submission.assignment_id == Assignment.id, Submission.student_id == user.id),
+        )
+        .where(Assignment.classroom_id == user.classroom_id)
+        .order_by(Assignment.due_at, Assignment.id)
+    )
+    if pending:
+        statement = statement.where(
+            Submission.id.is_(None), or_(Assignment.due_at > func.now(), Assignment.allow_late)
+        )
+    return [
+        StudentAssignmentOut(assignment=assignment, submission=submission)
+        for assignment, submission in db.execute(statement).all()
+    ]
 
 
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)
@@ -109,23 +108,34 @@ def get_assignment(assignment_id: UUID, db: DBSession):
 
 @router.patch("/{assignment_id}", response_model=AssignmentOut)
 def update_assignment(assignment_id: UUID, body: AssignmentUpdate, user: StaffUser, db: DBSession):
-    # TODO(you): partial update. Use update_event in routers/events.py as the pattern
-    # (load + permission check, model_dump(exclude_unset=True), setattr, commit, refresh).
-    #
-    # Then the interesting part: business rules the DB doesn't fully cover. Decide on and
-    # enforce:
-    #   1. due_at moved into the past? The DB only checks this on INSERT. Allowing it
-    #      effectively closes the assignment early. Is that a feature or a mistake?
-    #   2. max_score lowered below a score that's already been given: reject with 409.
-    #      Check with one query, without loading the submissions:
-    #        db.scalar(select(exists().where(Submission.assignment_id == ...,
-    #                                        Submission.score > new_max)))
-    #   3. max_score set to None (ungraded) while graded submissions exist: same idea.
-    #
-    # Why: validation that depends on *other rows* can't live in the Pydantic schema, so it
-    # belongs either here or in a trigger. Here gives better error messages, and a trigger is
-    # safer if other code paths write too. Picking one is a real design decision.
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Not implemented yet")
+    assignment = _get_assignment(db, assignment_id)
+    _check_owner(assignment, user)
+    changes = body.model_dump(exclude_unset=True)
+
+    # Moving the deadline into the past would silently close the assignment, so it's
+    # rejected like on create. To close early, set due_at to a time in the near future.
+    if "due_at" in changes and changes["due_at"] <= datetime.now(timezone.utc):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "due_at must be in the future")
+
+    # Rules that depend on other rows can't live in the schema. One EXISTS query each,
+    # without loading the submissions.
+    if "max_score" in changes:
+        new_max = changes["max_score"]
+        graded = Submission.assignment_id == assignment_id
+        if new_max is None:
+            conflict = graded & Submission.score.is_not(None)
+            message = "Some submissions are already graded, can't make this ungraded"
+        else:
+            conflict = graded & (Submission.score > new_max)
+            message = "Some submissions already have a score above the new max_score"
+        if db.scalar(select(exists().where(conflict))):
+            raise HTTPException(status.HTTP_409_CONFLICT, message)
+
+    for field, value in changes.items():
+        setattr(assignment, field, value)
+    db.commit()
+    db.refresh(assignment)
+    return assignment
 
 
 @router.delete("/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)

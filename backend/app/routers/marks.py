@@ -1,3 +1,5 @@
+from decimal import Decimal
+from itertools import groupby
 from typing import Annotated
 from uuid import UUID
 
@@ -9,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.db import DBSession
 from app.deps import HodUser, StudentUser, get_current_user, require_role
 from app.models import Mark, User
-from app.schemas import Exam, MarksUpsertRequest, StandardMarksOut
+from app.schemas import Exam, MarkOut, MarksUpsertRequest, StandardMarksOut
 
 router = APIRouter(prefix="/marks", tags=["marks"], dependencies=[Depends(get_current_user)])
 
@@ -35,24 +37,26 @@ def _load_marks(db: Session, student_id: UUID) -> list[Mark]:
 
 
 def _group_marks(marks: list[Mark]) -> list[StandardMarksOut]:
-    # TODO(you): turn the flat rows into one StandardMarksOut per (standard, exam).
-    #
-    # How:
-    #   - `marks` arrives sorted by (standard, exam), so itertools.groupby with
-    #     key=lambda m: (m.standard, m.exam) works. groupby only merges *adjacent* items,
-    #     which is why _load_marks sorts in SQL. A dict of lists works too.
-    #   - per group: subjects = [MarkOut.model_validate(m) for m in group]
-    #     total / max_total = sums of score / max_score
-    #     percentage = total / max_total * 100, rounded to 2 places
-    #   - sort the result by (standard, EXAM_ORDER[exam]). SQL sorted exam alphabetically
-    #     ("final" < "unit1"), which is fine for grouping but wrong for display.
-    #
-    # Why:
-    #   - Keep the sums as Decimal and convert at the end: float addition drifts
-    #     (0.1 + 0.2 != 0.3), and marks are exactly what people compare by hand.
-    #   - You could SUM() ... GROUP BY in SQL, but this response needs the per-subject rows
-    #     anyway, so one query + grouping in Python is simpler than two queries.
-    raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Not implemented yet")
+    # groupby only merges adjacent rows, which is why _load_marks sorts by (standard, exam)
+    result = []
+    for (standard, exam), group in groupby(marks, key=lambda m: (m.standard, m.exam)):
+        rows = list(group)
+        # sum as Decimal and convert at the end, float addition drifts
+        total = sum((m.score for m in rows), Decimal(0))
+        max_total = sum((m.max_score for m in rows), Decimal(0))
+        result.append(
+            StandardMarksOut(
+                standard=standard,
+                exam=exam,
+                subjects=[MarkOut.model_validate(m) for m in rows],
+                total=float(total),
+                max_total=float(max_total),
+                percentage=float((total / max_total * 100).quantize(Decimal("0.01"))),
+            )
+        )
+    # SQL sorted exam alphabetically ("final" < "unit1"), display needs the real order
+    result.sort(key=lambda r: (r.standard, EXAM_ORDER[r.exam]))
+    return result
 
 
 @router.get("/me", response_model=list[StandardMarksOut])
